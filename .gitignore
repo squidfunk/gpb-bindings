@@ -1,0 +1,11 @@
+# Ignore binaries.
+*.beam
+
+# Ignore crash dumps.
+*.dump
+
+# Ignore dependencies
+/deps/*
+
+# Ignore OSX internal files.
+.DS_Store
