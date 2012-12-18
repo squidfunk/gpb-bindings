@@ -4,7 +4,7 @@
 # Ignore crash dumps.
 *.dump
 
-# Ignore dependencies
+# Ignore dependencies.
 /deps/*
 
 # Ignore OSX internal files.
