@@ -33,7 +33,7 @@
 %% ----------------------------------------------------------------------------
 
 % Current version of this module.
--define(VERSION, "0.1.1").
+-define(VERSION, "0.1.2").
 
 % Subdirectory for modules that handle conversion of records from and to
 % Protobuf binaries, as well as pre- and suffixes of the generated modules.
@@ -93,9 +93,9 @@
 %     address_city_set/2          person:address_city_set(Person, Value)
 %
 % Messages, which are referenced inside other messages and marked as 'optional'
-% or 'required' get inlined, thus able to represent deeply nested hierarchies.
-% This is, where this module really shines, as Erlang's syntax on nested
-% records is really, really ugly!
+% or 'required' get inlined, thus an easy representaiton of deeply nested
+% hierarchies. This is, where this module really shines, as Erlang's syntax on
+% nested records is really, really ugly!
 %
 % If a message can contain many instances of another message, thus its
 % occurrence is declared 'repeated', a separate module is declared. As a
@@ -156,7 +156,9 @@
 %     decode/1,                   person:decode(Person)
 %
 % All in all this is an easy and convenient way of handling arbitrarily deep
-% nested Protobuf message type definitions.
+% nested Protobuf message type definitions. Circular references are also
+% nicely handled - for every circularily referenced attribute, an new
+% module containing bindings for all of its nested attributs is generated.
 file(File, Opts) ->
   case gpb_compile:file(File, [to_msg_defs | Opts]) of
     { ok, Defs } ->
@@ -208,14 +210,14 @@ generate(Base, Defs, Fields, Opts) ->
   end.
 
 % Generate the function bodies of the source file for the provided set of
-% message definitions and do this recursively for nested definitions.
+% message types and do this recursively for nested definitions and circles.
 body(_Base, _Defs, [], _Opts, _Parents) ->
   [];
 body(Base, Defs, [Field = #field{} | Fields], Opts, Parents) ->  
   case { Field#field.type, Field#field.occurrence } of
     { { msg, Type }, repeated } ->
       Children = proplists:get_value({ msg, Type }, Defs),
-      [ generate(Type, Defs, Children, Opts) || circular(Type, Defs) ],
+      [ generate(Type, Defs, Children, Opts) || not circular(Type, Defs) ],
       [ f("~s~2n", [function_get(Base, [Field#field{ type = Type } | Parents])]),
         f("~s~2n", [function_set(Base, [Field#field{ type = Type } | Parents])]),
         f("~s~2n", [function_add(Base, [Field#field{ type = Type } | Parents])]) |
@@ -228,7 +230,6 @@ body(Base, Defs, [Field = #field{} | Fields], Opts, Parents) ->
           f("~s~2n", [function_get(Base, [Field#field{ type = Type } | Parents])]),
           f("~s~2n", [function_set(Base, [Field#field{ type = Type } | Parents])]) ]
       end ++ body(Base, Defs, Fields, Opts, Parents);
-
     _ ->
       [ f("~s~2n", [function_get(Base, [Field | Parents])]),
         f("~s~2n", [function_set(Base, [Field | Parents])]) |
@@ -272,7 +273,7 @@ head(Base, Defs, Fields, Opts) ->
     f("  ~s:decode_msg(Binary, ~p).~n", [Module, Base]) ].
 
 % Generate export statements for the provided list of field definitions. For
-% each field, there is a getter and setter to be exported.
+% each field, there are get-/set-(and maybe add-)functions to be exported.
 exports(Base, Defs, Fields) ->
   exports(Base, Defs, Fields, []).
 exports(_Base, _Defs, [], _Parents) ->
@@ -345,8 +346,9 @@ function_get(Base, Fields, Layer, Value) ->
 % quote the respective section in the proto file for reference.
 function_set_head(Base, Fields) ->
   [ f("~s~n", [function_comment(Base, Fields)]),
-    f("~s_set(~s, ~s) when ~s ->", [function_name(Fields), variable(Base),
-      v(), function_guards(hd(Fields))]) ].
+    f("~s_set(~s, Value) when Value =:= undefined; ~s ->",
+    [ function_name(Fields), variable(Base),
+      function_guards(hd(Fields)) ]) ].
 
 % Generate the body of a function to persist a value to a certain field. Parent
 % records are initialized transparently.
@@ -363,7 +365,7 @@ function_set_body(Base, Fields, Layer, Value) ->
 % Generate a function footer, returning an argument error, in case the value
 % does not pass through the respective guards.
 function_set_foot(Base, Fields) ->
-  [ f("~s_set(_~s, _~s) ->~n", [function_name(Fields), variable(Base), v()]),
+  [ f("~s_set(_~s, _Value) ->~n", [function_name(Fields), variable(Base)]),
     f("  { error, badarg }") ].
 
 % Generate a set function for the provided base and field list, including a
@@ -393,17 +395,18 @@ function_set(Base, Fields, Layer, Value) ->
 % quote the respective section in the proto file for reference.
 function_add_head(Base, Fields = [Field | _]) ->
   [ f("~s~n", [function_comment(Base, Fields)]),
-    f("~s_add(~s, ~s) when ~s ->", [function_name(Fields), variable(Base),
-      v(), f("is_record(~s, ~p)", [v(), Field#field.type])]) ].
+    f("~s_add(~s, Value) when Value =:= undefined; ~s ->",
+    [ function_name(Fields), variable(Base),
+      f("is_record(Value, ~p)", [Field#field.type]) ]) ].
 
 % Generate the body of a function to prepend a value to a certain field. Parent
 % records are initialized transparently.
 function_add_body(Base, Fields, 0, _Value) ->
   [ f("case ~s of~n", [record_get(Base, Fields)]),
     f("  undefined ->~n"),
-    f("    ~s;~n", [record_set(Base, Fields, 1, f("[~s]", [v()]))]),
+    f("    ~s;~n", [record_set(Base, Fields, 1, "[Value]")]),
     f("  V ->~n"),
-    f("    ~s~n", [record_set(Base, Fields, 1, f("[~s | V]", [v()]))]),
+    f("    ~s~n", [record_set(Base, Fields, 1, "[Value | V]")]),
     f("end") ];
 function_add_body(Base, Fields, Layer, Value) ->
   [ f("case ~s of~n", [record_get(Base, drop(Fields, Layer))]),
@@ -416,7 +419,7 @@ function_add_body(Base, Fields, Layer, Value) ->
 % Generate a function footer, returning an argument error, in case the value
 % does not pass through the respective guards.
 function_add_foot(Base, Fields) ->
-  [ f("~s_add(_~s, _~s) ->~n", [function_name(Fields), variable(Base), v()]),
+  [ f("~s_add(_~s, _Value) ->~n", [function_name(Fields), variable(Base)]),
     f("  { error, badarg }") ].
 
 % Generate an add function for the provided base and field list, including a
@@ -461,46 +464,44 @@ function_name(Fields) ->
 
 % Generate guard(s) for the provided field, whereas the Protobuf types have
 % to be mapped to the internal Erlang types.
-function_guards(Field) ->
-  function_guards(Field, v()).
-function_guards(#field{ type = int32 }, Value) ->
-  f("~s =:= undefined; is_integer(~s)", [Value, Value]);
-function_guards(#field{ type = int64 }, Value) ->
-  f("~s =:= undefined; is_integer(~s)", [Value, Value]);
-function_guards(#field{ type = uint32 }, Value) ->
-  f("~s =:= undefined; is_integer(~s), ~s >= 0", [Value, Value, Value]);        % TODO: assume Value! --->aufräumen!
-function_guards(#field{ type = uint64 }, Value) ->
-  f("~s =:= undefined; is_integer(~s), ~s >= 0", [Value, Value, Value]);
-function_guards(#field{ type = sint32 }, Value) ->
-  f("~s =:= undefined; is_integer(~s)", [Value, Value]);
-function_guards(#field{ type = sint64 }, Value) ->
-  f("~s =:= undefined; is_integer(~s)", [Value, Value]);
-function_guards(#field{ type = fixed32 }, Value) ->
-  f("~s =:= undefined; is_integer(~s)", [Value, Value]);
-function_guards(#field{ type = fixed64 }, Value) ->
-  f("~s =:= undefined; is_integer(~s)", [Value, Value]);
-function_guards(#field{ type = sfixed32 }, Value) ->
-  f("~s =:= undefined; is_integer(~s)", [Value, Value]);
-function_guards(#field{ type = sfixed64 }, Value) ->
-  f("~s =:= undefined; is_integer(~s)", [Value, Value]);
-function_guards(#field{ type = bool }, Value) ->
-  f("~s =:= undefined; is_boolean(~s)", [Value, Value]);
-function_guards(#field{ type = float }, Value) ->
-  f("~s =:= undefined; is_float(~s)", [Value, Value]);
-function_guards(#field{ type = double }, Value) ->
-  f("~s =:= undefined; is_float(~s)", [Value, Value]);
-function_guards(#field{ type = string }, Value) ->
-  f("~s =:= undefined; is_list(~s)", [Value, Value]);
-function_guards(#field{ type = bytes }, Value) ->
-  f("~s =:= undefined; is_binary(~s)", [Value, Value]);
-function_guards(#field{ type = { enum, _Type } }, Value) ->
-  f("~s =:= undefined; is_atom(~s)", [Value, Value]);
-function_guards(#field{ type = Type, occurrence = optional }, Value) ->
-  f("~s =:= undefined; is_record(~s, ~p)", [Value, Value, Type]);
-function_guards(#field{ type = Type, occurrence = required }, Value) ->
-  f("~s =:= undefined; is_record(~s, ~p)", [Value, Value, Type]);
-function_guards(_Field, Value) ->
-  f("~s =:= undefined; is_list(~s)", [Value, Value]).
+function_guards(#field{ type = int32 }) ->
+  "is_integer(Value)";
+function_guards(#field{ type = int64 }) ->
+  "is_integer(Value)";
+function_guards(#field{ type = uint32 }) ->
+  "is_integer(Value), Value >= 0";
+function_guards(#field{ type = uint64 }) ->
+  "is_integer(Value), Value >= 0";
+function_guards(#field{ type = sint32 }) ->
+  "is_integer(Value)";
+function_guards(#field{ type = sint64 }) ->
+  "is_integer(Value)";
+function_guards(#field{ type = fixed32 }) ->
+  "is_integer(Value)";
+function_guards(#field{ type = fixed64 }) ->
+  "is_integer(Value)";
+function_guards(#field{ type = sfixed32 }) ->
+  "is_integer(Value)";
+function_guards(#field{ type = sfixed64 }) ->
+  "is_integer(Value)";
+function_guards(#field{ type = bool }) ->
+  "is_boolean(Value)";
+function_guards(#field{ type = float }) ->
+  "is_float(Value)";
+function_guards(#field{ type = double }) ->
+  "is_float(Value)";
+function_guards(#field{ type = string }) ->
+  "is_list(Value)";
+function_guards(#field{ type = bytes }) ->
+  "is_binary(Value)";
+function_guards(#field{ type = { enum, _Type } }) ->
+  "is_atom(Value)";
+function_guards(#field{ type = Type, occurrence = optional }) ->
+  f("is_record(Value, ~p)", [Type]);
+function_guards(#field{ type = Type, occurrence = required }) ->
+  f("is_record(Value, ~p)", [Type]);
+function_guards(_Field) ->
+  "is_list(Value)".
 
 %% ----------------------------------------------------------------------------
 %% Record qualifiers
@@ -525,7 +526,7 @@ record_get(Base, [Field | Fields], Value) ->
 % Qualify a nested record chain by resolving each field, in order to set the
 % current type, and append the already qualified string.
 record_set(Base, Fields, Layer) ->
-  record_set(Base, Fields, Layer, v()).
+  record_set(Base, Fields, Layer, "Value").
 record_set(Base, [], _Layer, Value) ->
   f("~s#~p~s", [variable(Base), Base, Value]);
 record_set(Base, [Field = #field{ name = Name } | Fields], Layer, Value) ->
@@ -542,41 +543,8 @@ record_set(Base, [Field = #field{ name = Name } | Fields], Layer, Value) ->
 %% Helper functions
 %% ----------------------------------------------------------------------------
 
-% Check, if the provided field is part of a circular reference, as we must
-% generate a separate module for such a reference.
-%
-% This function either takes a list of definitions and filters out all those
-% that are not referenced in a circular way, or takes a specific message type
-% and returns, whether this specific message type is at the join point of a
-% circular reference.
-circular(Defs) ->
-  [ { { Type, Base }, Fields } ||
-    { { Type, Base }, Fields } <- Defs, Type =:= msg, circular(Base, Defs) ].
-circular(Base, Defs) ->
-  circular(Defs, proplists:get_value({ msg, Base }, Defs), [Base]).
-circular(_Defs, [], _Path) ->
-  false;
-circular(Defs, [Field | Fields], Path) ->
-  case Field#field.type of
-    { msg, Type } ->
-      case lists:member(Type, Path) of
-        false ->
-          Children = proplists:get_value({ msg, Type }, Defs),
-          case circular(Defs, Children, [Type | Path]) of
-            false ->
-              circular(Defs, Fields, Path);
-            true ->
-              true
-          end;
-        true ->
-          Type =:= lists:last(Path)
-      end;
-    _ ->
-      circular(Defs, Fields, Path)
-  end.
-
 % Iterate through the provided list of definitions and obtain only those which
-% are circular or not referenced by others, as they are our root definitions.
+% are circular or not referenced by others, as these are our root definitions.
 roots(Defs) ->
   circular(Defs) ++ roots(Defs, Defs, []).
 roots(Defs, [], []) ->
@@ -592,6 +560,62 @@ roots(Defs, [{ Type, Fields } | Messages], []) ->
   end;
 roots(Defs, Messages, [Field | Fields]) ->
   roots(proplists:delete(Field#field.type, Defs), Messages, Fields).
+
+% Check, if the provided field is the beginning of a circular reference, as we
+% must generate a separate module for such a reference.
+%
+% This function either takes a list of definitions and filters out all those
+% that are not referenced in a circular way, or takes a specific message type
+% and returns, whether this specific message type is at the join point (and not
+% in the middle) of a circular reference.
+circular(Defs) ->
+  [ { { Type, Base }, Fields } ||
+    { { Type, Base }, Fields } <- Defs, Type =:= msg, circular(Base, Defs) ].
+circular(Base, Defs) ->
+  Fields = proplists:get_value({ msg, Base }, Defs),
+  circular(Defs, Fields, [Base]).
+circular(_Defs, [], _Path) ->
+  false;
+circular(Defs, [Field | Fields], Path) ->
+  case Field#field.type of
+    { msg, Type } ->
+      case lists:member(Type, Path) of
+        false ->
+          Children = proplists:get_value({ msg, Type }, Defs),
+          case circular(Defs, Children, [Type | Path]) of
+            false ->
+              circular(Defs, Fields, Path);
+            true ->
+              true
+          end;
+        true ->
+          Type =:= lists:last(Path) andalso is_tree(Path)
+      end;
+    _ ->
+      circular(Defs, Fields, Path)
+  end.
+
+% Check, if the provided path decsribes a tree within the schema, so there are
+% no leafs which refer to earlier branches.
+is_tree([_ | []]) ->
+  true;
+is_tree([Branch | Path]) ->
+  not sublist(
+    string:tokens(atom_to_list(Branch),   "."),
+    string:tokens(atom_to_list(hd(Path)), ".")
+  ) andalso is_tree(Path).
+
+% Scan both lists linearly and check, whether the first list is a sublist of
+% the second list. In this case return true, otherwise false.
+sublist(_First, []) ->
+  false;
+sublist([], _Second) ->
+  true;
+sublist([F | First], [S | Second]) ->
+  case F of
+    S -> sublist(First, Second);
+    _ -> false
+  end.
 
 % Helper function to drop the first N elements of a list. The trivial case of
 % dropping 0 elements is implemented for convenience.
@@ -638,8 +662,3 @@ f(String) ->
   f(String, []).
 f(String, Args) ->
   io_lib:format(String, Args).
-
-% Return the generic variable name, which is used within all generated methods
-% for values of varying types.
-v() ->
-  "Value".

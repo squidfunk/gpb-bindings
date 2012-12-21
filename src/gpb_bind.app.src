@@ -20,7 +20,7 @@
 
 { application, gpb_bind, [
   { description, "Binding generator for gpb, an Erlang Protobuf implementation" },
-  { vsn, "0.1.0" },
+  { vsn, "0.1.2" },
   { modules, [] },
   { registered, [] },
   { applications,  [kernel, stdlib] },

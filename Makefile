@@ -24,6 +24,9 @@ all: compile
 
 fresh: clean all
 
+init:
+	@$(REBAR) get-deps update-deps
+
 clean:
 	@$(REBAR) clean
 
