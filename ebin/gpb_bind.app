@@ -1,6 +1,6 @@
 {application,gpb_bind,
-             [{description,"Binding generator for gpb, an Erlang Protobuf implementation"},
-              {vsn,"0.1.2"},
+             [{description,"Generate bindings for gpb, Protocol Buffers for Erlang"},
+              {vsn,"0.1.3"},
               {modules,[gpb_bind]},
               {registered,[]},
               {applications,[kernel,stdlib]},
