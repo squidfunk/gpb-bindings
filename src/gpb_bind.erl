@@ -127,6 +127,11 @@ body(Base, Defs, [Field = #field{} | Fields], Opts, Parents) ->
           [ f("~s~2n", [function_get(Base, [Field#field{ type = Type } | Parents])]),
             f("~s~2n", [function_set(Base, [Field#field{ type = Type } | Parents])]) ]
       end ++ body(Base, Defs, Fields, Opts, Parents);
+    { _, repeated } ->
+      [ f("~s~2n", [function_get(Base, [Field | Parents])]),
+        f("~s~2n", [function_set(Base, [Field | Parents])]),
+        f("~s~2n", [function_add(Base, [Field | Parents])]) |
+        body(Base, Defs, Fields, Opts, Parents) ];
     _ ->
       [ f("~s~2n", [function_get(Base, [Field | Parents])]),
         f("~s~2n", [function_set(Base, [Field | Parents])]) |
@@ -298,9 +303,9 @@ function_set(Base, Fields, Layer, Value) ->
 % quote the respective section in the proto file for reference.
 function_add_head(Base, Fields = [Field | _]) ->
   [ f("~s~n", [function_comment(Base, Fields)]),
-    f("~s_add(~s, Value) when Value == undefined; ~s ->",
+    f("~s_add(~s, Value) when ~s ->",
     [ function_name(Fields), variable(Base),
-      f("is_record(Value, ~p)", [Field#field.type]) ]) ].
+      function_guards(Field#field{ occurrence = undefined }) ]) ].
 
 % Generate the body of a function to prepend a value to a certain field. Parent
 % records are initialized transparently.
@@ -314,7 +319,7 @@ function_add_body(Base, Fields, 0, _Value) ->
 function_add_body(Base, Fields, Layer, Value) ->
   [ f("case ~s of~n", [record_get(Base, drop(Fields, Layer))]),
     f("  undefined ->~n"),
-    f("    ~s;~n", [record_set(Base, Fields, Layer + 1)]),
+    f("    ~s;~n", [record_set(Base, Fields, Layer + 1, "[Value]")]),
     f("  ~s ->~n", [[65 + length(Fields) - Layer - 1]]),
     f("    ~s~n", [Value]),
     f("end") ].
@@ -368,6 +373,8 @@ function_name(Fields) ->
 
 % Generate guard(s) for the provided field, whereas the Protobuf types have to
 % be mapped to their Erlang representations.
+function_guards(#field{ occurrence = repeated }) ->
+  "is_list(Value)";
 function_guards(#field{ type = int32 }) ->
   "is_integer(Value)";
 function_guards(#field{ type = int64 }) ->
