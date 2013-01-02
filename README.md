@@ -17,7 +17,7 @@ The bindings this module generates will do this for you.
 
 ## Installation
 
-Using [Rebar][] for dependency management, the following line must be added to
+Using [Rebar][] for dependency management, the following lines must be added to
 the `rebar.config` residing in the application's root:
 
 ``` erlang
