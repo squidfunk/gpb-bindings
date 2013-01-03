@@ -33,7 +33,7 @@
 %% ----------------------------------------------------------------------------
 
 % Current version of this module.
--define(VERSION, "0.1.3").
+-define(VERSION, "0.1.4").
 
 % Subdirectory for modules that handle conversion of records from and to
 % Protobuf binaries, as well as pre- and suffixes of the generated modules.
@@ -407,9 +407,7 @@ function_guards(#field{ type = bytes }) ->
   "is_binary(Value)";
 function_guards(#field{ type = { enum, _Type } }) ->
   "is_atom(Value)";
-function_guards(#field{ type = Type, occurrence = optional }) ->
-  f("is_record(Value, ~p)", [Type]);
-function_guards(#field{ type = Type, occurrence = required }) ->
+function_guards(#field{ type = Type }) ->
   f("is_record(Value, ~p)", [Type]);
 function_guards(_Field) ->
   "is_list(Value)".
@@ -514,22 +512,10 @@ circular(Defs, [Field | Fields], Path) ->
 is_tree([_ | []]) ->
   true;
 is_tree([Branch | Path]) ->
-  not sublist(
+  not lists:prefix(
     string:tokens(atom_to_list(Branch), "."),
     string:tokens(atom_to_list(hd(Path)), ".")
   ) andalso is_tree(Path).
-
-% Scan both lists linearly and check, whether the first list is a sublist of
-% the second list. In this case return true, otherwise false.
-sublist(_First, []) ->
-  false;
-sublist([], _Second) ->
-  true;
-sublist([F | First], [S | Second]) ->
-  case F of
-    S -> sublist(First, Second);
-    _ -> false
-  end.
 
 % Helper function to drop the first N elements of a list. The trivial case of
 % dropping 0 elements is implemented for convenience.
