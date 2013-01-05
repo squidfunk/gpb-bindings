@@ -468,7 +468,7 @@ roots(Defs, [{ Type, Fields } | Messages], []) ->
     { msg, _ } ->
       roots(Defs, Messages, Fields);
     _ ->
-      roots(Defs, Messages, [])
+      roots(proplists:delete(Type, Defs), Messages, [])
   end;
 roots(Defs, Messages, [Field | Fields]) ->
   roots(proplists:delete(Field#field.type, Defs), Messages, Fields).
