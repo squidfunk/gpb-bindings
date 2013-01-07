@@ -64,8 +64,8 @@ file(File, Opts) ->
         { error, Reason } ->
           { error, Reason };
         Path ->
-          Module = list_to_atom(?PB_PREFIX ++ Filename ++ ?PB_SUFFIX),
-          gpb_compile:msg_defs(Module, Defs,
+          Module = filename(?PB_PREFIX ++ Filename ++ ?PB_SUFFIX),
+          gpb_compile:msg_defs(list_to_atom(Module), Defs,
             [{ f, File }, { o, Path } | proplists:delete(o, Opts)]),
           each(roots(Defs), Defs, [{ m, Module } | Opts])
       end;
@@ -540,10 +540,13 @@ inline([Head | Tail], Fields, Layer) ->
 variable(Base) ->
   lists:last(string:tokens(atom_to_list(Base), ".")).
 
-% Convert the atom to a filename representation, replacing dots by underscores
-% and downcasing the whole string.
+% Convert an atom or list to a filename representation, replacing dots by
+% underscores and downcasing the whole string.
+filename(Base) when is_atom(Base) ->
+  filename(atom_to_list(Base));
 filename(Base) ->
-  string:to_lower(string:join(string:tokens(atom_to_list(Base), "."), "_")).
+  string:to_lower(string:join(string:tokens(Base, "."), "_")).
+
 
 % Check if the given base directory exists, create a sub-directory for the
 % provided identifier and return its name.
