@@ -120,7 +120,7 @@ body(Base, Defs, [Field = #field{} | Fields], Opts, Parents) ->
         body(Base, Defs, Fields, Opts, Parents) ];
     { { msg, Type }, _ } ->
       Children = proplists:get_value({ msg, Type }, Defs),
-      case circular(Type, Defs) of
+      case circular(Type, Defs) or not is_tree([Base, Type]) of
         false ->
           body(Base, Defs, Children, Opts, [Field | Parents]);
         true  ->
@@ -190,7 +190,7 @@ exports(Base, Defs, [Field | Fields], Parents) ->
         exports(Base, Defs, Fields, Parents) ];
     { { msg, Type }, _ } ->
       Children = proplists:get_value({ msg, Type }, Defs),
-      case circular(Type, Defs) of
+      case circular(Type, Defs) or not is_tree([Base, Type]) of
         false ->
           exports(Base, Defs, Children, [Field | Parents]);
         true  ->
@@ -264,7 +264,7 @@ function_set_body(Base, Fields, Layer, Value) ->
   [ f("case ~s of~n", [record_get(Base, drop(Fields, Layer))]),
     f("  undefined ->~n"),
     f("    ~s;~n", [record_set(Base, Fields, Layer + 1)]),
-    f("  ~s ->~n", [[65 + length(Fields) - Layer - 1]]),
+    f("  ~s ->~n", [[$A + length(Fields) - Layer - 1]]),
     f("    ~s~n", [Value]),
     f("end") ].
 
@@ -320,7 +320,7 @@ function_add_body(Base, Fields, Layer, Value) ->
   [ f("case ~s of~n", [record_get(Base, drop(Fields, Layer))]),
     f("  undefined ->~n"),
     f("    ~s;~n", [record_set(Base, Fields, Layer + 1, "[Value]")]),
-    f("  ~s ->~n", [[65 + length(Fields) - Layer - 1]]),
+    f("  ~s ->~n", [[$A + length(Fields) - Layer - 1]]),
     f("    ~s~n", [Value]),
     f("end") ].
 
@@ -443,7 +443,7 @@ record_set(Base, [], _Layer, Value) ->
 record_set(Base, [Field = #field{ name = Name } | Fields], Layer, Value) ->
   record_set(Base, Fields, Layer - 1, case Field#field.type of
     { msg, Type } when Layer =< 0 ->
-      f("{ ~p = ~s#~p~s }", [Name, [65 + length(Fields)], Type, Value]);
+      f("{ ~p = ~s#~p~s }", [Name, [$A + length(Fields)], Type, Value]);
     { msg, Type } when Layer  > 0 ->
       f("{ ~p = #~p~s }", [Name, Type, Value]);
     _ ->
@@ -457,7 +457,9 @@ record_set(Base, [Field = #field{ name = Name } | Fields], Layer, Value) ->
 % Iterate through the provided list of definitions and obtain only those which
 % are circular or not referenced by others, as these are our root definitions.
 roots(Defs) ->
-  circular(Defs) ++ roots(Defs, Defs, []).
+  Roots =  roots(Defs, Defs, []),
+  Roots ++ [ { Type, Fields } || { Type, Fields } <- circular(Defs),
+    none == proplists:lookup(Type, Roots) ].
 
 roots(Defs, [], []) ->
   Defs;
@@ -465,8 +467,9 @@ roots(Defs, [{ Type, [] } | Messages], []) ->
   roots(proplists:delete(Type, Defs), Messages, []);
 roots(Defs, [{ Type, Fields } | Messages], []) ->
   case Type of
-    { msg, _ } ->
-      roots(Defs, Messages, Fields);
+    { msg, Root } ->
+      roots(Defs, Messages, [ Field || Field <- Fields,
+        { msg, Node } <- [Field#field.type], is_tree([Root, Node]) ]);
     _ ->
       roots(proplists:delete(Type, Defs), Messages, [])
   end;
@@ -501,7 +504,8 @@ circular(Defs, [Field | Fields], Path) ->
             true  -> true
           end;
         true ->
-          Type == lists:last(Path) andalso is_tree(Path)
+          Type == lists:last(Path) andalso
+            (length(Path) == 1 orelse not is_tree(Path))
       end;
     _ ->
       circular(Defs, Fields, Path)
@@ -512,10 +516,10 @@ circular(Defs, [Field | Fields], Path) ->
 is_tree([_ | []]) ->
   true;
 is_tree([Branch | Path]) ->
-  not lists:prefix(
+  lists:prefix(
     string:tokens(atom_to_list(Branch), "."),
     string:tokens(atom_to_list(hd(Path)), ".")
-  ) andalso is_tree(Path).
+  ) andalso Branch /= hd(Path) andalso is_tree(Path).
 
 % Helper function to drop the first N elements of a list. The trivial case of
 % dropping 0 elements is implemented for convenience.
