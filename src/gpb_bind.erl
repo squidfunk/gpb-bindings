@@ -1,4 +1,4 @@
-%% Copyright (c) 2012 Martin Donath <md@struct.cc>
+%% Copyright (c) 2012-2013 Martin Donath <md@struct.cc>
 
 %% Permission is hereby granted, free of charge, to any person obtaining a copy
 %% of this software and associated documentation files (the "Software"), to
@@ -219,8 +219,8 @@ function_get_body(Base, Fields, 0, _Value) ->
   [ f("~s", [record_get(Base, Fields)]) ];
 function_get_body(Base, Fields, Layer, Value) ->
   [ f("case ~s of~n", [record_get(Base, drop(Fields, Layer))]),
-    f("  undefined ->~n"),
-    f("    undefined;~n"),
+    f("  ~p ->~n", [undefined(Fields, Layer)]),
+    f("    ~p;~n", [undefined(Fields, Layer)]),
     f("  _ ->~n"),
     f("    ~s~n", [Value]),
     f("end") ].
@@ -252,8 +252,8 @@ function_get(Base, Fields, Layer, Value) ->
 % quote the respective section in the proto file for reference.
 function_set_head(Base, Fields) ->
   [ f("~s~n", [function_comment(Base, Fields)]),
-    f("~s_set(~s, Value) when Value == undefined; ~s ->",
-    [ function_name(Fields), variable(Base),
+    f("~s_set(~s, Value) when Value == ~p; ~s ->",
+    [ function_name(Fields), variable(Base), undefined(Fields, 0),
       function_guards(hd(Fields)) ]) ].
 
 % Generate the body of a function to persist a value to a certain field. Parent
@@ -262,7 +262,7 @@ function_set_body(Base, Fields, 0, _Value) ->
   [ f("~s", [record_set(Base, Fields, 1)]) ];
 function_set_body(Base, Fields, Layer, Value) ->
   [ f("case ~s of~n", [record_get(Base, drop(Fields, Layer))]),
-    f("  undefined ->~n"),
+    f("  ~p ->~n", [undefined(Fields, Layer)]),
     f("    ~s;~n", [record_set(Base, Fields, Layer + 1)]),
     f("  ~s ->~n", [[$A + length(Fields) - Layer - 1]]),
     f("    ~s~n", [Value]),
@@ -311,14 +311,14 @@ function_add_head(Base, Fields = [Field | _]) ->
 % records are initialized transparently.
 function_add_body(Base, Fields, 0, _Value) ->
   [ f("case ~s of~n", [record_get(Base, Fields)]),
-    f("  undefined ->~n"),
+    f("  ~p ->~n", [undefined(Fields, 1)]),
     f("    ~s;~n", [record_set(Base, Fields, 1, "[Value]")]),
     f("  V ->~n"),
     f("    ~s~n", [record_set(Base, Fields, 1, "[Value | V]")]),
     f("end") ];
 function_add_body(Base, Fields, Layer, Value) ->
   [ f("case ~s of~n", [record_get(Base, drop(Fields, Layer))]),
-    f("  undefined ->~n"),
+    f("  ~p ->~n", [undefined(Fields, Layer)]),
     f("    ~s;~n", [record_set(Base, Fields, Layer + 1, "[Value]")]),
     f("  ~s ->~n", [[$A + length(Fields) - Layer - 1]]),
     f("    ~s~n", [Value]),
@@ -450,6 +450,16 @@ record_set(Base, [Field = #field{ name = Name } | Fields], Layer, Value) ->
       f("{ ~p = ~s }", [Name, Value])
   end).
 
+% Determine the type-specific value in case that no value is set for the
+% provided nested record chain.
+undefined(Fields, Layer) when length(Fields) == Layer ->
+  undefined;
+undefined(Fields, Layer) ->
+  case (hd(drop(Fields, Layer)))#field.occurrence of
+    repeated -> [];
+    _        -> undefined
+  end.
+
 %% ----------------------------------------------------------------------------
 %% Helper functions
 %% ----------------------------------------------------------------------------
@@ -550,7 +560,6 @@ filename(Base) when is_atom(Base) ->
   filename(atom_to_list(Base));
 filename(Base) ->
   string:to_lower(string:join(string:tokens(Base, "."), "_")).
-
 
 % Check if the given base directory exists, create a sub-directory for the
 % provided identifier and return its name.
