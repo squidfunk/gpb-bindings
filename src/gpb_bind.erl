@@ -33,7 +33,7 @@
 %% ----------------------------------------------------------------------------
 
 % Current version of this module.
--define(VERSION, "0.1.4").
+-define(VERSION, "0.1.5").
 
 % Subdirectory for modules that handle conversion of records from and to
 % Protobuf binaries, as well as pre- and suffixes of the generated modules.
