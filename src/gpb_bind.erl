@@ -184,9 +184,9 @@ exports(_Base, _Defs, [], _Parents) ->
 exports(Base, Defs, [Field | Fields], Parents) ->
   case { Field#field.type, Field#field.occurrence } of
     { _, repeated } ->
-      [ f("-export([~s_get/1]).~n", [function_name([Field | Parents])]),
-        f("-export([~s_set/2]).~n", [function_name([Field | Parents])]),
-        f("-export([~s_add/2]).~n", [function_name([Field | Parents])]) |
+      [ f("-export([get_~s/1]).~n", [function_name([Field | Parents])]),
+        f("-export([set_~s/2]).~n", [function_name([Field | Parents])]),
+        f("-export([add_~s/2]).~n", [function_name([Field | Parents])]) |
         exports(Base, Defs, Fields, Parents) ];
     { { msg, Type }, _ } ->
       Children = proplists:get_value({ msg, Type }, Defs),
@@ -194,12 +194,12 @@ exports(Base, Defs, [Field | Fields], Parents) ->
         false ->
           exports(Base, Defs, Children, [Field | Parents]);
         true  ->
-          [ f("-export([~s_get/1]).~n", [function_name([Field | Parents])]),
-            f("-export([~s_set/2]).~n", [function_name([Field | Parents])]) ]
+          [ f("-export([get_~s/1]).~n", [function_name([Field | Parents])]),
+            f("-export([set_~s/2]).~n", [function_name([Field | Parents])]) ]
       end ++ exports(Base, Defs, Fields, Parents);
     _ ->
-      [ f("-export([~s_get/1]).~n", [function_name([Field | Parents])]),
-        f("-export([~s_set/2]).~n", [function_name([Field | Parents])]) |
+      [ f("-export([get_~s/1]).~n", [function_name([Field | Parents])]),
+        f("-export([set_~s/2]).~n", [function_name([Field | Parents])]) |
         exports(Base, Defs, Fields, Parents) ]
   end.
 
@@ -211,7 +211,7 @@ exports(Base, Defs, [Field | Fields], Parents) ->
 % quote the respective section in the proto file for reference.
 function_get_head(Base, Fields) ->
   [ f("~s~n", [function_comment(Base, Fields)]),
-    f("~s_get(~s) ->", [function_name(Fields), variable(Base)]) ].
+    f("get_~s(~s) ->", [function_name(Fields), variable(Base)]) ].
 
 % Generate the body of a function to retrieve a certain field. If any of the
 % parent records is missing, undefined is returned.
@@ -252,7 +252,7 @@ function_get(Base, Fields, Layer, Value) ->
 % quote the respective section in the proto file for reference.
 function_set_head(Base, Fields) ->
   [ f("~s~n", [function_comment(Base, Fields)]),
-    f("~s_set(~s, Value) when Value == undefined; ~s ->",
+    f("set_~s(~s, Value) when Value == undefined; ~s ->",
     [ function_name(Fields), variable(Base),
       function_guards(hd(Fields)) ]) ].
 
@@ -271,7 +271,7 @@ function_set_body(Base, Fields, Layer, Value) ->
 % Generate a function footer, returning an argument error, in case the value
 % does not pass through the respective guards.
 function_set_foot(Base, Fields) ->
-  [ f("~s_set(_~s, _Value) ->~n", [function_name(Fields), variable(Base)]),
+  [ f("set_~s(_~s, _Value) ->~n", [function_name(Fields), variable(Base)]),
     f("  { error, badarg }") ].
 
 % Generate a set function for the provided base and field list, including a
@@ -303,7 +303,7 @@ function_set(Base, Fields, Layer, Value) ->
 % quote the respective section in the proto file for reference.
 function_add_head(Base, Fields = [Field | _]) ->
   [ f("~s~n", [function_comment(Base, Fields)]),
-    f("~s_add(~s, Value) when ~s ->",
+    f("add_~s(~s, Value) when ~s ->",
     [ function_name(Fields), variable(Base),
       function_guards(Field#field{ occurrence = undefined }) ]) ].
 
@@ -327,7 +327,7 @@ function_add_body(Base, Fields, Layer, Value) ->
 % Generate a function footer, returning an argument error, in case the value
 % does not pass through the respective guards.
 function_add_foot(Base, Fields) ->
-  [ f("~s_add(_~s, _Value) ->~n", [function_name(Fields), variable(Base)]),
+  [ f("add_~s(_~s, _Value) ->~n", [function_name(Fields), variable(Base)]),
     f("  { error, badarg }") ].
 
 % Generate an add function for the provided base and field list, including a
