@@ -1,4 +1,4 @@
-%% Copyright (c) 2012 Martin Donath <md@struct.cc>
+%% Copyright (c) 2012-2013 Martin Donath <md@struct.cc>
 
 %% Permission is hereby granted, free of charge, to any person obtaining a copy
 %% of this software and associated documentation files (the "Software"), to
@@ -20,7 +20,7 @@
 
 { application, gpb_bind, [
   { description, "Generate bindings for gpb, Protocol Buffers for Erlang" },
-  { vsn, "0.1.4" },
+  { vsn, "0.1.5" },
   { modules, [] },
   { registered, [] },
   { applications,  [kernel, stdlib] },

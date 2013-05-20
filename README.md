@@ -204,7 +204,7 @@ to store the generated files is taken from the options passed to [gpb][].
 
 ## License
 
-Copyright (c) 2012 Martin Donath
+Copyright (c) 2012-2013 Martin Donath
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to
