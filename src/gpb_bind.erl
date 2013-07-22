@@ -154,6 +154,9 @@ head(Base, Defs, Fields, Opts) ->
     f("-export([decode/1]). ~2n"),
     f("~s~n", [exports(Base, Defs, Fields)]),
 
+    % Enable inlining, but leave it up to the compiler.
+    f("-compile(inline). ~2n"),
+
     % Include record definitions.
     f("-include(\"../~s/~s.hrl\").~2n", [?PB_SUBDIR, Module]),
 
